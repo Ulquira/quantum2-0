@@ -16,37 +16,33 @@ export const useAuth = () => {
     const cleanPass = password.trim();
 
     try {
-      const { data } = await apiClient.post<{ token: string; user: TechnicianUser }>('/auth/login', {
+      // Envía ambos campos (documento y documentNumber) para funcionar con /api/auth/login de win-dashboard
+      const { data } = await apiClient.post<any>('/auth/login', {
+        documento: cleanDoc,
         documentNumber: cleanDoc,
         password: cleanPass,
       });
 
+      const rawUser = data.user || {};
+      const normalizedUser: TechnicianUser = {
+        id: String(rawUser.id || '1'),
+        documentNumber: String(rawUser.documentNumber || rawUser.documento || cleanDoc),
+        fullName: String(rawUser.fullName || rawUser.nombre || `Técnico ${cleanDoc}`),
+        zone: String(rawUser.zone || rawUser.permisos?.rolNombre || 'Lima Metropolitana'),
+        mustChangePassword: false,
+      };
+
       await secureStorage.setToken(data.token);
-      await secureStorage.setUser({ ...data.user, mustChangePassword: false });
+      await secureStorage.setUser(normalizedUser);
       navigate('/orders', { replace: true });
     } catch (err: any) {
-      if (err.response?.status === 401) {
-        setError(err.response?.data?.message || 'Credenciales incorrectas');
+      if (err.response?.status === 401 || err.response?.status === 400 || err.response?.status === 403) {
+        setError(err.response?.data?.error || err.response?.data?.message || 'Documento o contraseña incorrectos');
         setIsLoading(false);
         return;
       }
 
-      // Respaldo autónomo en el teléfono si está en 4G/Datos Móviles sin conexión a la PC
-      if (cleanDoc && cleanPass) {
-        const offlineUser: TechnicianUser = {
-          id: '1',
-          documentNumber: cleanDoc,
-          fullName: cleanDoc === '111' ? 'TONNY' : `Técnico ${cleanDoc}`,
-          zone: 'Lima Metropolitana',
-          mustChangePassword: false,
-        };
-        await secureStorage.setToken('offline-jwt-token');
-        await secureStorage.setUser(offlineUser);
-        navigate('/orders', { replace: true });
-        return;
-      }
-
-      setError('No se pudo conectar al servidor');
+      setError('Error al conectar con win-dashboard-api.azurewebsites.net');
     } finally {
       setIsLoading(false);
     }

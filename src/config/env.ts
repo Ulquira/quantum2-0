@@ -1,13 +1,11 @@
-﻿const getApiBaseUrl = (): string => {
+﻿const PROD_API_URL = 'https://win-dashboard-api.azurewebsites.net/api';
+
+const getApiBaseUrl = (): string => {
   const raw = import.meta.env.VITE_API_BASE_URL;
   if (raw && typeof raw === 'string' && raw.startsWith('http') && !raw.includes('http://:')) {
-    return raw;
+    return raw.replace(/\/+$/, '');
   }
-  const host =
-    typeof window !== 'undefined' && window.location.hostname
-      ? window.location.hostname
-      : 'localhost';
-  return `http://${host}:5000/api`;
+  return PROD_API_URL;
 };
 
 const resolvedUrl = getApiBaseUrl();

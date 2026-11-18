@@ -3,113 +3,80 @@ import { secureStorage } from '../../../utils/storage';
 import { DEFAULT_WORKFLOW_TASKS } from './workflowTemplate';
 import type { WinOrder, OrderWorkflowStatus } from '../types/order.types';
 
-const FALLBACK_ORDERS: WinOrder[] = [
-  {
-    OrdenId: 904101,
-    TipoOrden: 'INST',
-    TipoTraba: 'Instalación FTTH Residencial',
-    MotivoTrabajo: 'Alta Nueva Fibra 600 Mbps',
-    Cliente: 'CARLOS MENDOZA VARGAS',
-    Producto: 'DUO INTERNET 600MB + WINTV',
-    Cuadrilla: 'CUAD-LIMA-04',
-    FVisita: '12:00 pm - 4:00 pm',
-    Estado: 'ASIGNADA',
-    EstadoOT: 'AGENDADA',
-    Direccion: 'Av. Javier Prado Este 2450 Dpto 402',
-    Localidad: 'SAN BORJA',
-    Provincia: 'LIMA',
-    IdenServi: 'SRV-884120',
-    Zona: 'LIMA ESTE',
-    ObservacionesOT: 'Llamar 15 min antes de llegar. Portón negro.',
-    DiagnósticoTécnico: '',
-    UsuarioResponsable: '111',
-    NumeroDocumentoCliente: '45896321',
+const normalizeRemoteOrder = (r: any, doc: string): WinOrder => {
+  const rawEstado = String(r.EstadoOT || r.estado_ot || r.Estado || '').toUpperCase();
+  const estadoOt: OrderWorkflowStatus = rawEstado.includes('FINALIZ')
+    ? 'FINALIZADO'
+    : rawEstado.includes('PROCES') || rawEstado.includes('INICIAD')
+    ? 'EN PROCESO'
+    : rawEstado.includes('CAMINO') || rawEstado.includes('RUTA')
+    ? 'EN CAMINO'
+    : 'AGENDADA';
+
+  return {
+    OrdenId: Number(r.OrdenId || r.orden_id),
+    TipoOrden: String(r.TipoOrden || r.servicio_tipo || r.tipo_operacion || 'INST'),
+    TipoTraba: String(r.TipoTraba || r.tipo_trabajo || 'Instalación FTTH'),
+    MotivoTrabajo: String(r.MotivoTrabajo || r.motivo_trabajo || r.producto || ''),
+    Cliente: String(r.Cliente || r.cliente || 'Cliente WIN'),
+    Producto: String(r.Producto || r.producto || r.plan_contratado || ''),
+    Cuadrilla: String(r.Cuadrilla || r.cuadrilla_completa || r.cuadrilla || ''),
+    FVisita: String(r.FVisita || r.fecha_solicitud_fmt || 'Hoy'),
+    Estado: String(r.Estado || r.estado_ot || 'ASIGNADA'),
+    EstadoOT: estadoOt,
+    Direccion: String(r.Direccion || r.direccion_cliente || r.distrito || ''),
+    Localidad: String(r.Localidad || r.distrito || 'LIMA'),
+    Provincia: String(r.Provincia || 'LIMA'),
+    IdenServi: String(r.IdenServi || r.ticket || r.codi_segui_ot || ''),
+    Zona: String(r.Zona || r.sector_operativo || 'LIMA'),
+    ObservacionesOT: String(r.ObservacionesOT || r.observaciones_tareas || ''),
+    DiagnósticoTécnico: String(r.DiagnósticoTécnico || r.diagnostico_tecnico || ''),
+    UsuarioResponsable: doc,
+    NumeroDocumentoCliente: String(r.NumeroDocumentoCliente || r.numero_documento || ''),
     Prioridad: 'ALTA',
-    TeleMovilNume: '987654321',
-    Georeferencia: '-12.089120,-77.001250',
-    DatosTecnicos: 'CTO: SB-14-08 | Puerto: 4 | Hilo: Azul',
-    Cuadrilla_nombre: 'Cuadrilla 04 - WIN',
-    Pin_token: '4829',
-    tasks: DEFAULT_WORKFLOW_TASKS,
-  },
-  {
-    OrdenId: 904102,
-    TipoOrden: 'AVERIA',
-    TipoTraba: 'Mantenimiento Correctivo FTTH',
-    MotivoTrabajo: 'LOS Rojo en ONT / Sin Servicio',
-    Cliente: 'MARÍA FERNÁNDEZ ROJAS',
-    Producto: 'INTERNET 1000MB GAMER',
-    Cuadrilla: 'CUAD-LIMA-04',
-    FVisita: '12:00 pm - 4:00 pm',
-    Estado: 'ASIGNADA',
-    EstadoOT: 'AGENDADA',
-    Direccion: 'Calle Las Begonias 415 Of. 201',
-    Localidad: 'SAN ISIDRO',
-    Provincia: 'LIMA',
-    IdenServi: 'SRV-772310',
-    Zona: 'LIMA CENTRO',
-    ObservacionesOT: 'Cliente reporta corte de fibra externa desde ayer.',
-    DiagnósticoTécnico: '',
-    UsuarioResponsable: '111',
-    NumeroDocumentoCliente: '41258963',
-    Prioridad: 'CRITICA',
-    TeleMovilNume: '999888777',
-    Georeferencia: '-12.097100,-77.026500',
-    DatosTecnicos: 'CTO: SI-02-11 | Puerto: 2 | Hilo: Verde',
-    Cuadrilla_nombre: 'Cuadrilla 04 - WIN',
-    Pin_token: '9104',
-    tasks: DEFAULT_WORKFLOW_TASKS,
-  },
-  {
-    OrdenId: 904103,
-    TipoOrden: 'POSTVENTA',
-    TipoTraba: 'Traslado Interno / Mesh',
-    MotivoTrabajo: 'Instalación de Nodo Mesh Adicional',
-    Cliente: 'JORGE LUIS RAMÍREZ',
-    Producto: 'INTERNET 400MB',
-    Cuadrilla: 'CUAD-LIMA-04',
-    FVisita: '12:00 pm - 4:00 pm',
-    Estado: 'ASIGNADA',
-    EstadoOT: 'AGENDADA',
-    Direccion: 'Av. Angamos Oeste 1120',
-    Localidad: 'MIRAFLORES',
-    Provincia: 'LIMA',
-    IdenServi: 'SRV-665190',
-    Zona: 'LIMA SUR',
-    ObservacionesOT: 'Configurar repetidor en segundo piso.',
-    DiagnósticoTécnico: '',
-    UsuarioResponsable: '111',
-    NumeroDocumentoCliente: '10457896',
-    Prioridad: 'NORMAL',
-    TeleMovilNume: '945123654',
-    Georeferencia: '-12.113500,-77.034200',
-    DatosTecnicos: 'CTO: MIR-09-03 | Puerto: 7 | Hilo: Azul',
-    Cuadrilla_nombre: 'Cuadrilla 04 - WIN',
-    Pin_token: '3312',
-    tasks: DEFAULT_WORKFLOW_TASKS,
-  },
-];
+    TeleMovilNume: String(r.TeleMovilNume || r.telefono || ''),
+    Georeferencia: String(r.Georeferencia || r.georeferencia_cliente || '-12.0971,-77.0265'),
+    DatosTecnicos: String(r.DatosTecnicos || r.datos_tecnicos || ''),
+    Cuadrilla_nombre: String(r.Cuadrilla_nombre || r.cuadrilla_completa || r.cuadrilla || ''),
+    Georeferencia_tecnico: String(r.Georeferencia_tecnico || r.georeferencia_tecnico || ''),
+    Pin_token: String(r.Pin_token || r.token_tracking || ''),
+    tasks: Array.isArray(r.tasks) && r.tasks.length > 0 ? r.tasks : DEFAULT_WORKFLOW_TASKS,
+  };
+};
 
 export const ordersService = {
   async fetchMyOrders(): Promise<WinOrder[]> {
     const user = await secureStorage.getUser();
+    const doc = user?.documentNumber || '99999999';
+
     try {
-      if (user) {
-        const { data } = await apiClient.get<WinOrder[]>(`/orders/${user.documentNumber}`);
-        if (data && data.length > 0) {
-          localStorage.setItem('q2_cached_orders', JSON.stringify(data));
-          return data;
-        }
+      // 1. Intenta el endpoint dedicado móvil (/api/orders/:documentNumber)
+      const { data } = await apiClient.get<any[]>(`/orders/${doc}`);
+      if (Array.isArray(data) && data.length > 0) {
+        const mapped = data.map((r) => normalizeRemoteOrder(r, doc));
+        localStorage.setItem('q2_cached_orders', JSON.stringify(mapped));
+        return mapped;
       }
     } catch {
-      // Si el teléfono está fuera del Wi-Fi de la PC, usa las órdenes en memoria del teléfono
+      // Si aún no se desplegó mobileField.ts en Azure, usa /api/orders/search que ya existe en win-dashboard-api
+    }
+
+    try {
+      const queryFilter = doc === '99999999' || doc === '111' ? '' : doc;
+      const { data } = await apiClient.get<any>(`/orders/search`, {
+        params: { ignoreDates: 'true', q: queryFilter, page: 1, pageSize: 30 },
+      });
+      if (data?.ok && Array.isArray(data.orders) && data.orders.length > 0) {
+        const mapped = data.orders.map((r: any) => normalizeRemoteOrder(r, doc));
+        localStorage.setItem('q2_cached_orders', JSON.stringify(mapped));
+        return mapped;
+      }
+    } catch (err) {
+      console.warn('Usando caché local:', err);
     }
 
     const cached = localStorage.getItem('q2_cached_orders');
-    if (cached) return JSON.parse(cached) as WinOrder[];
-
-    localStorage.setItem('q2_cached_orders', JSON.stringify(FALLBACK_ORDERS));
-    return FALLBACK_ORDERS;
+    return cached ? (JSON.parse(cached) as WinOrder[]) : [];
   },
 
   async updateOrderStatus(
@@ -121,7 +88,9 @@ export const ordersService = {
     const cached = localStorage.getItem('q2_cached_orders');
     if (cached) {
       const list = (JSON.parse(cached) as WinOrder[]).map((o) =>
-        o.OrdenId === ordenId ? { ...o, EstadoOT: status, DiagnósticoTécnico: diagnostico || o.DiagnósticoTécnico } : o
+        Number(o.OrdenId) === Number(ordenId)
+          ? { ...o, EstadoOT: status, DiagnósticoTécnico: diagnostico || o.DiagnósticoTécnico }
+          : o
       );
       localStorage.setItem('q2_cached_orders', JSON.stringify(list));
     }
@@ -133,18 +102,28 @@ export const ordersService = {
         diagnostico,
       });
     } catch {
-      // Estado guardado localmente en el dispositivo
+      // Estado guardado localmente mientras se despliega el endpoint PUT en Azure
     }
   },
 
   async updateTask(
     taskId: string,
-    payload: { valor_ingresado: string; foto_url: string | null; completado: boolean; lat?: number; lng?: number }
+    payload: {
+      ordenId?: number;
+      codigo_tarea?: string;
+      titulo?: string;
+      valor_ingresado: string;
+      foto_url: string | null;
+      fotos?: string[];
+      completado: boolean;
+      lat?: number;
+      lng?: number;
+    }
   ): Promise<void> {
     try {
       await apiClient.put(`/orders/task/${taskId}`, payload);
     } catch {
-      // Tarea guardada localmente en el dispositivo
+      // Sincronizado en almacenamiento local
     }
   },
 };

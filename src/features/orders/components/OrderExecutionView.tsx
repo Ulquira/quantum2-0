@@ -18,11 +18,15 @@ export const OrderExecutionView = () => {
 
   useEffect(() => {
     ordersService.fetchMyOrders().then((list) => {
-      const found = list.find((o) => o.OrdenId === ordenIdNum);
+      const found = list.find((o) => Number(o.OrdenId) === ordenIdNum);
       if (found) {
         const storageKey = `q2_tasks_${found.OrdenId}`;
         const savedRaw = sessionStorage.getItem(storageKey);
-        const savedList: OrderTaskItem[] = savedRaw ? JSON.parse(savedRaw) : [];
+        const savedList: OrderTaskItem[] = savedRaw
+          ? JSON.parse(savedRaw)
+          : Array.isArray(found.tasks)
+          ? found.tasks
+          : [];
 
         const mergedTasks: OrderTaskItem[] = DEFAULT_WORKFLOW_TASKS.map((templateTask) => {
           const prev = savedList.find(
@@ -31,10 +35,10 @@ export const OrderExecutionView = () => {
           if (prev) {
             return {
               ...templateTask,
-              valor_ingresado: prev.valor_ingresado,
-              foto_url: prev.foto_url,
-              fotos: prev.fotos,
-              completado: prev.completado,
+              valor_ingresado: prev.valor_ingresado || '',
+              foto_url: prev.foto_url || null,
+              fotos: prev.fotos || (prev.foto_url ? [prev.foto_url] : []),
+              completado: Boolean(prev.completado),
             };
           }
           if (templateTask.codigo_tarea === 'DOC_TITULAR') {
@@ -55,7 +59,23 @@ export const OrderExecutionView = () => {
   }
 
   const handleUpdateTask = (taskId: string, changes: Partial<OrderTaskItem>) => {
-    const updatedTasks = order.tasks.map((t) => (t.id === taskId ? { ...t, ...changes } : t));
+    const updatedTasks = order.tasks.map((t) => {
+      if (t.id !== taskId) return t;
+      const merged = { ...t, ...changes };
+      // Sincroniza en tiempo real con la tabla orden_tareas_fotos en la API oficial
+      ordersService.updateTask(taskId, {
+        ordenId: order.OrdenId,
+        codigo_tarea: merged.codigo_tarea,
+        titulo: merged.titulo,
+        valor_ingresado: merged.valor_ingresado,
+        foto_url: merged.foto_url,
+        fotos: merged.fotos,
+        completado: merged.completado,
+        lat: coords?.lat,
+        lng: coords?.lng,
+      });
+      return merged;
+    });
     setOrder({ ...order, tasks: updatedTasks });
     sessionStorage.setItem(`q2_tasks_${order.OrdenId}`, JSON.stringify(updatedTasks));
   };
@@ -76,7 +96,6 @@ export const OrderExecutionView = () => {
 
   return (
     <div className="space-y-4 pb-8">
-      {/* Barra superior para regresar a la ficha / mapa de la orden */}
       <div className="flex items-center justify-between">
         <button
           onClick={() => navigate(`/orders/${order.OrdenId}`)}
@@ -89,7 +108,6 @@ export const OrderExecutionView = () => {
         </span>
       </div>
 
-      {/* Mini resumen fijo */}
       <div className="bg-white rounded-2xl p-3.5 border border-slate-100 flex items-center justify-between">
         <div className="min-w-0">
           <h2 className="text-xs font-extrabold text-slate-900 truncate">{order.Cliente}</h2>
@@ -99,7 +117,6 @@ export const OrderExecutionView = () => {
         </div>
       </div>
 
-      {/* Wizard de Etapas (1. Cliente, 2. CTO, 3. Exterior) con Carrusel de Fotos */}
       <OrderStageWizard
         tasks={order.tasks}
         disabled={false}
@@ -107,7 +124,6 @@ export const OrderExecutionView = () => {
         onUpdateTask={handleUpdateTask}
       />
 
-      {/* Cierre de Orden */}
       <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-xs space-y-2.5">
         <input
           type="text"
@@ -122,7 +138,7 @@ export const OrderExecutionView = () => {
           disabled={!allRequiredDone || saving}
           className="w-full py-3.5 px-4 rounded-xl bg-[#FF5500] disabled:bg-slate-200 disabled:text-slate-400 text-white font-extrabold text-xs cursor-pointer"
         >
-          {saving ? 'Finalizando...' : allRequiredDone ? 'Finalizar Orden OT' : 'Completa las 3 etapas para finalizar'}
+          {saving ? 'Finalizando...' : allRequiredDone ? 'Finalizar Orden OT' : 'Completa las 4 etapas para finalizar'}
         </button>
       </div>
     </div>

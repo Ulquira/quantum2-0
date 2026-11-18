@@ -42,6 +42,16 @@ const getMeters = (lat1: number, lon1: number, lat2: number, lon2: number): numb
   return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
 };
 
+const parsePair = (raw?: string | null): { lat: number; lng: number } | null => {
+  if (!raw) return null;
+  const m = String(raw).match(/-?\d+\.\d+/g);
+  if (!m || m.length < 2) return null;
+  const lat = parseFloat(m[0]);
+  const lng = parseFloat(m[1]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  return { lat, lng };
+};
+
 export const OrderNetworkMap = ({
   clientName,
   clientAddress,
@@ -51,54 +61,79 @@ export const OrderNetworkMap = ({
 }: Props) => {
   const [mapStyle, setMapStyle] = useState<'STREETS' | 'SATELLITE'>('STREETS');
 
-  const [rawLat, rawLng] = (georeferencia || '-12.0971,-77.0265')
-    .split(',')
-    .map((n) => parseFloat(n.trim()));
+  const houseCoord = parsePair(georeferencia) || { lat: -12.0971, lng: -77.0265 };
+  const houseLat = houseCoord.lat;
+  const houseLng = houseCoord.lng;
 
-  const houseLat = Number.isFinite(rawLat) ? rawLat : -12.0971;
-  const houseLng = Number.isFinite(rawLng) ? rawLng : -77.0265;
+  // Parsea el formato oficial de vw_winordetraba ("CTO/1/MIR-09;COORDENADA CTO/1/-12.11,-77.03;PUERTO/1/4")
+  const ctoNames: Record<string, string> = {};
+  const ctoCoords: Record<string, { lat: number; lng: number }> = {};
+  let parsedPort = 'Asignado';
+  let parsedThread = 'Principal';
 
-  const ctoMatch = datosTecnicos.match(/CTO:\s*([^\s|]+)/i);
-  const portMatch = datosTecnicos.match(/Puerto:\s*([^\s|]+)/i);
-  const threadMatch = datosTecnicos.match(/Hilo:\s*([^\s|]+)/i);
-  const ctoCoordMatch = datosTecnicos.match(/(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/);
+  if (datosTecnicos) {
+    const segments = String(datosTecnicos).split(';').map((s) => s.trim()).filter(Boolean);
+    for (const seg of segments) {
+      const parts = seg.split('/');
+      const rawKey = (parts[0] || '').trim().toUpperCase();
+      const rawVal = (parts.slice(2).join('/') || parts[1] || '').trim();
+      if (!rawKey || !rawVal) continue;
 
-  const primaryCtoCode = ctoMatch ? ctoMatch[1] : 'CTO-WIN-01';
-  const primaryPort = portMatch ? portMatch[1] : '2';
-  const primaryThread = threadMatch ? threadMatch[1] : 'Azul';
+      if (/^CTO\d*$/i.test(rawKey)) {
+        ctoNames[rawKey] = rawVal;
+      } else if (/COORDENADA\s*(CTO\d*)/i.test(rawKey)) {
+        const m = rawKey.match(/(CTO\d*)/i);
+        const key = m ? m[1].toUpperCase() : 'CTO';
+        const c = parsePair(rawVal);
+        if (c) ctoCoords[key] = c;
+      } else if (rawKey.includes('PUERTO') || rawKey.includes('BORNE')) {
+        parsedPort = rawVal;
+      } else if (rawKey.includes('HILO') || rawKey.includes('BUFFER')) {
+        parsedThread = rawVal;
+      }
+    }
+  }
 
-  const cto1Lat = ctoCoordMatch ? parseFloat(ctoCoordMatch[1]) : Number((houseLat + 0.00035).toFixed(6));
-  const cto1Lng = ctoCoordMatch ? parseFloat(ctoCoordMatch[2]) : Number((houseLng - 0.00032).toFixed(6));
+  const ctoList: CtoPoint[] = [];
+  const keys = Array.from(new Set([...Object.keys(ctoNames), ...Object.keys(ctoCoords)]));
 
-  const cto2Lat = Number((houseLat - 0.00038).toFixed(6));
-  const cto2Lng = Number((houseLng + 0.00042).toFixed(6));
+  keys.forEach((k, idx) => {
+    const coord = ctoCoords[k] || {
+      lat: Number((houseLat + (idx === 0 ? 0.00032 : -0.00035)).toFixed(6)),
+      lng: Number((houseLng + (idx === 0 ? -0.00028 : 0.00038)).toFixed(6)),
+    };
+    ctoList.push({
+      id: `cto-${k}-${idx}`,
+      code: ctoNames[k] || k,
+      port: parsedPort,
+      thread: parsedThread,
+      lat: coord.lat,
+      lng: coord.lng,
+      distanceMeters: getMeters(houseLat, houseLng, coord.lat, coord.lng),
+      isPrimary: idx === 0,
+    });
+  });
 
-  const ctoList: CtoPoint[] = [
-    {
+  if (ctoList.length === 0) {
+    const ctoMatch = datosTecnicos.match(/CTO:\s*([^\s|;]+)/i);
+    const portMatch = datosTecnicos.match(/Puerto:\s*([^\s|;]+)/i);
+    const threadMatch = datosTecnicos.match(/Hilo:\s*([^\s|;]+)/i);
+    const c1Lat = Number((houseLat + 0.00032).toFixed(6));
+    const c1Lng = Number((houseLng - 0.00028).toFixed(6));
+    ctoList.push({
       id: 'cto-main',
-      code: primaryCtoCode,
-      port: primaryPort,
-      thread: primaryThread,
-      lat: cto1Lat,
-      lng: cto1Lng,
-      distanceMeters: getMeters(houseLat, houseLng, cto1Lat, cto1Lng),
+      code: ctoMatch ? ctoMatch[1] : 'CTO-ASIGNADA',
+      port: portMatch ? portMatch[1] : parsedPort,
+      thread: threadMatch ? threadMatch[1] : parsedThread,
+      lat: c1Lat,
+      lng: c1Lng,
+      distanceMeters: getMeters(houseLat, houseLng, c1Lat, c1Lng),
       isPrimary: true,
-    },
-    {
-      id: 'cto-alt',
-      code: `${primaryCtoCode}-AUX`,
-      port: '6 (Libre)',
-      thread: 'Verde',
-      lat: cto2Lat,
-      lng: cto2Lng,
-      distanceMeters: getMeters(houseLat, houseLng, cto2Lat, cto2Lng),
-      isPrimary: false,
-    },
-  ];
+    });
+  }
 
   const [selectedCto, setSelectedCto] = useState<CtoPoint>(ctoList[0]);
 
-  // lyrs=m (Google Maps Calles Limpio) | lyrs=y (Google Satélite con nombres de calles)
   const googleTileUrl =
     mapStyle === 'STREETS'
       ? 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}&hl=es'
@@ -110,7 +145,7 @@ export const OrderNetworkMap = ({
         <div>
           <h3 className="text-xs font-extrabold text-slate-900">Google Maps • Cliente y CTO</h3>
           <p className="text-[11px] font-semibold text-slate-400">
-            Toca un marcador para ver puerto y ubicación exacta
+            Ubicación exacta desde Datos Técnicos
           </p>
         </div>
 
@@ -132,18 +167,9 @@ export const OrderNetworkMap = ({
           zoomControl={false}
           className="h-full w-full"
         >
-          <TileLayer
-            key={mapStyle}
-            attribution='&copy; Google Maps'
-            url={googleTileUrl}
-            maxZoom={20}
-          />
+          <TileLayer key={mapStyle} attribution="&copy; Google Maps" url={googleTileUrl} maxZoom={20} />
 
-          {/* Marcador Cliente */}
-          <Marker
-            position={[houseLat, houseLng]}
-            icon={createBadgeIcon('#FF5500', '🏠 CLIENTE')}
-          >
+          <Marker position={[houseLat, houseLng]} icon={createBadgeIcon('#FF5500', '🏠 CLIENTE')}>
             <Popup>
               <div className="text-xs space-y-1">
                 <p className="font-extrabold text-slate-900">{clientName}</p>
@@ -153,39 +179,24 @@ export const OrderNetworkMap = ({
             </Popup>
           </Marker>
 
-          {/* Marcadores CTO */}
           {ctoList.map((cto) => (
             <Marker
               key={cto.id}
               position={[cto.lat, cto.lng]}
-              icon={createBadgeIcon(
-                cto.isPrimary ? '#0F172A' : '#475569',
-                `⚡ ${cto.code}`
-              )}
-              eventHandlers={{
-                click: () => setSelectedCto(cto),
-              }}
+              icon={createBadgeIcon(cto.isPrimary ? '#0F172A' : '#475569', `⚡ ${cto.code}`)}
+              eventHandlers={{ click: () => setSelectedCto(cto) }}
             >
               <Popup>
                 <div className="text-xs space-y-1">
-                  <p className="font-extrabold text-slate-900">
-                    CTO: {cto.code} {cto.isPrimary ? '(Asignada)' : '(Alterna)'}
-                  </p>
-                  <p className="text-slate-600">
-                    Puerto: <strong>{cto.port}</strong> • Hilo: <strong>{cto.thread}</strong>
-                  </p>
+                  <p className="font-extrabold text-slate-900">CTO: {cto.code}</p>
                   <p className="text-[10px] text-slate-400">{cto.lat}, {cto.lng}</p>
                 </div>
               </Popup>
             </Marker>
           ))}
 
-          {/* Marcador Técnico */}
           {techCoords && (
-            <Marker
-              position={[techCoords.lat, techCoords.lng]}
-              icon={createBadgeIcon('#10B981', '📍 TÚ')}
-            />
+            <Marker position={[techCoords.lat, techCoords.lng]} icon={createBadgeIcon('#10B981', '📍 TÚ')} />
           )}
         </MapContainer>
       </div>
@@ -200,9 +211,7 @@ export const OrderNetworkMap = ({
                 type="button"
                 onClick={() => setSelectedCto(cto)}
                 className={`px-3 py-1.5 rounded-xl text-xs font-extrabold flex items-center gap-1.5 shrink-0 transition-all cursor-pointer ${
-                  active
-                    ? 'bg-slate-900 text-white shadow-xs'
-                    : 'bg-white text-slate-600 border border-slate-200'
+                  active ? 'bg-slate-900 text-white shadow-xs' : 'bg-white text-slate-600 border border-slate-200'
                 }`}
               >
                 <Cpu className="w-3.5 h-3.5 text-[#FF5500]" />
