@@ -1,11 +1,15 @@
-﻿const PROD_API_URL = 'https://win-dashboard-api.azurewebsites.net/api';
-
-const getApiBaseUrl = (): string => {
+﻿const getApiBaseUrl = (): string => {
+  if (typeof window !== 'undefined' && window.location.hostname) {
+    const host = window.location.hostname;
+    if (host === 'localhost' || host === '127.0.0.1' || host.startsWith('192.168.') || host.startsWith('10.')) {
+      return `http://${host}:5000/api`;
+    }
+  }
   const raw = import.meta.env.VITE_API_BASE_URL;
-  if (raw && typeof raw === 'string' && raw.startsWith('http') && !raw.includes('http://:')) {
+  if (raw && typeof raw === 'string' && raw.startsWith('http')) {
     return raw.replace(/\/+$/, '');
   }
-  return PROD_API_URL;
+  return 'http://localhost:5000/api';
 };
 
 const resolvedUrl = getApiBaseUrl();

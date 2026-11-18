@@ -1,6 +1,8 @@
 ﻿import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
 import { apiClient } from '../../../lib/apiClient';
+import { env } from '../../../config/env';
 import { secureStorage } from '../../../utils/storage';
 import type { LoginCredentials, ChangePasswordPayload, TechnicianUser } from '../types/auth.types';
 
@@ -14,14 +16,21 @@ export const useAuth = () => {
     setError(null);
     const cleanDoc = documentNumber.trim();
     const cleanPass = password.trim();
+    const payload = { documento: cleanDoc, documentNumber: cleanDoc, password: cleanPass };
 
     try {
-      // Envía ambos campos (documento y documentNumber) para funcionar con /api/auth/login de win-dashboard
-      const { data } = await apiClient.post<any>('/auth/login', {
-        documento: cleanDoc,
-        documentNumber: cleanDoc,
-        password: cleanPass,
-      });
+      let data: any;
+      try {
+        const res = await apiClient.post('/auth/login', payload);
+        data = res.data;
+      } catch (primaryErr: any) {
+        if (primaryErr.response) throw primaryErr;
+        // Fallback inmediato a localhost:5000 si la IP de red cambió
+        const fallbackRes = await axios.post('http://localhost:5000/api/auth/login', payload, {
+          timeout: 10000,
+        });
+        data = fallbackRes.data;
+      }
 
       const rawUser = data.user || {};
       const normalizedUser: TechnicianUser = {
@@ -42,7 +51,7 @@ export const useAuth = () => {
         return;
       }
 
-      setError('Error al conectar con win-dashboard-api.azurewebsites.net');
+      setError(`Verifica que el servidor local esté corriendo en el puerto 5000 (${env.API_BASE_URL})`);
     } finally {
       setIsLoading(false);
     }

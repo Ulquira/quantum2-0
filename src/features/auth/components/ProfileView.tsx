@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
-import { UserCheck, IdCard, MapPin, LogOut } from 'lucide-react';
+﻿import { useEffect, useState } from 'react';
+import { UserCheck, IdCard, MapPin, LogOut, Server } from 'lucide-react';
 import { secureStorage } from '../../../utils/storage';
 import { useAuth } from '../hooks/useAuth';
+import { env } from '../../../config/env';
 import type { TechnicianUser } from '../types/auth.types';
 
 export const ProfileView = () => {
@@ -14,34 +15,42 @@ export const ProfileView = () => {
 
   return (
     <div className="space-y-4">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex items-center gap-4">
-        <div className="w-14 h-14 rounded-2xl bg-blue-600/20 text-blue-400 flex items-center justify-center">
+      <div className="bg-white border border-slate-100 rounded-2xl p-5 flex items-center gap-4 shadow-xs">
+        <div className="w-14 h-14 rounded-2xl bg-[#FFF1E6] text-[#FF5500] flex items-center justify-center">
           <UserCheck className="w-7 h-7" />
         </div>
         <div>
-          <h2 className="text-base font-bold text-white">{user?.fullName || 'Técnico'}</h2>
-          <p className="text-xs text-emerald-400 font-medium">Activo en turno</p>
+          <h2 className="text-base font-extrabold text-slate-900">{user?.fullName || 'Técnico WIN'}</h2>
+          <p className="text-xs text-emerald-600 font-bold">● Activo en turno (bd_phoenix)</p>
         </div>
       </div>
 
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-slate-400 flex items-center gap-2">
-            <IdCard className="w-4 h-4 text-slate-500" /> Documento
+      <div className="bg-white border border-slate-100 rounded-2xl p-4 space-y-3 shadow-xs">
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-slate-500 font-semibold flex items-center gap-2">
+            <IdCard className="w-4 h-4 text-[#FF5500]" /> Documento
           </span>
-          <span className="font-semibold text-white">{user?.documentNumber}</span>
+          <span className="font-extrabold text-slate-900">{user?.documentNumber}</span>
         </div>
-        <div className="flex items-center justify-between text-sm border-t border-slate-800 pt-3">
-          <span className="text-slate-400 flex items-center gap-2">
-            <MapPin className="w-4 h-4 text-slate-500" /> Zona Asignada
+        <div className="flex items-center justify-between text-xs border-t border-slate-100 pt-3">
+          <span className="text-slate-500 font-semibold flex items-center gap-2">
+            <MapPin className="w-4 h-4 text-[#FF5500]" /> Rol / Zona
           </span>
-          <span className="font-semibold text-white">{user?.zone}</span>
+          <span className="font-extrabold text-slate-900">{user?.zone}</span>
+        </div>
+        <div className="flex items-center justify-between text-xs border-t border-slate-100 pt-3">
+          <span className="text-slate-500 font-semibold flex items-center gap-2">
+            <Server className="w-4 h-4 text-[#FF5500]" /> API Activa
+          </span>
+          <span className="font-mono text-[11px] font-bold text-slate-600 truncate max-w-[180px]">
+            {env.API_BASE_URL}
+          </span>
         </div>
       </div>
 
       <button
         onClick={logout}
-        className="w-full py-3 px-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 font-semibold text-sm flex items-center justify-center gap-2"
+        className="w-full py-3.5 px-4 rounded-2xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-600 font-extrabold text-xs flex items-center justify-center gap-2 cursor-pointer"
       >
         <LogOut className="w-4 h-4" />
         Cerrar Sesión

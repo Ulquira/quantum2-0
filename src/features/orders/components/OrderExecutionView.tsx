@@ -21,23 +21,35 @@ export const OrderExecutionView = () => {
       const found = list.find((o) => Number(o.OrdenId) === ordenIdNum);
       if (found) {
         const storageKey = `q2_tasks_${found.OrdenId}`;
-        const savedRaw = sessionStorage.getItem(storageKey);
-        const savedList: OrderTaskItem[] = savedRaw
-          ? JSON.parse(savedRaw)
-          : Array.isArray(found.tasks)
-          ? found.tasks
-          : [];
+        let savedList: OrderTaskItem[] = [];
+
+        if (Array.isArray(found.tasks) && found.tasks.some((t) => t.foto_url || (t.fotos && t.fotos.length > 0))) {
+          savedList = found.tasks;
+        } else {
+          try {
+            const savedRaw = sessionStorage.getItem(storageKey);
+            savedList = savedRaw ? JSON.parse(savedRaw) : Array.isArray(found.tasks) ? found.tasks : [];
+          } catch {
+            savedList = Array.isArray(found.tasks) ? found.tasks : [];
+          }
+        }
 
         const mergedTasks: OrderTaskItem[] = DEFAULT_WORKFLOW_TASKS.map((templateTask) => {
           const prev = savedList.find(
             (s) => s.id === templateTask.id || s.codigo_tarea === templateTask.codigo_tarea
           );
           if (prev) {
+            const fotosArr =
+              Array.isArray(prev.fotos) && prev.fotos.length > 0
+                ? prev.fotos
+                : prev.foto_url
+                ? [prev.foto_url]
+                : [];
             return {
               ...templateTask,
               valor_ingresado: prev.valor_ingresado || '',
-              foto_url: prev.foto_url || null,
-              fotos: prev.fotos || (prev.foto_url ? [prev.foto_url] : []),
+              foto_url: fotosArr[0] || prev.foto_url || null,
+              fotos: fotosArr,
               completado: Boolean(prev.completado),
             };
           }
@@ -47,7 +59,11 @@ export const OrderExecutionView = () => {
           return templateTask;
         });
 
-        sessionStorage.setItem(storageKey, JSON.stringify(mergedTasks));
+        try {
+          sessionStorage.setItem(storageKey, JSON.stringify(mergedTasks));
+        } catch {
+          // Ignorar QuotaExceededError si las fotos en base64 superan 5MB
+        }
         setOrder({ ...found, tasks: mergedTasks });
         setDiagnostico(found.DiagnósticoTécnico || '');
       }
@@ -59,25 +75,54 @@ export const OrderExecutionView = () => {
   }
 
   const handleUpdateTask = (taskId: string, changes: Partial<OrderTaskItem>) => {
-    const updatedTasks = order.tasks.map((t) => {
-      if (t.id !== taskId) return t;
-      const merged = { ...t, ...changes };
-      // Sincroniza en tiempo real con la tabla orden_tareas_fotos en la API oficial
-      ordersService.updateTask(taskId, {
-        ordenId: order.OrdenId,
-        codigo_tarea: merged.codigo_tarea,
-        titulo: merged.titulo,
-        valor_ingresado: merged.valor_ingresado,
-        foto_url: merged.foto_url,
-        fotos: merged.fotos,
-        completado: merged.completado,
-        lat: coords?.lat,
-        lng: coords?.lng,
+    setOrder((prevOrder) => {
+      if (!prevOrder) return prevOrder;
+
+      const updatedTasks = prevOrder.tasks.map((t) => {
+        if (t.id !== taskId) return t;
+
+        const nextFotos =
+          changes.fotos !== undefined
+            ? changes.fotos
+            : Array.isArray(t.fotos) && t.fotos.length > 0
+            ? t.fotos
+            : t.foto_url
+            ? [t.foto_url]
+            : [];
+
+        const nextFotoUrl =
+          changes.foto_url !== undefined ? changes.foto_url : nextFotos[0] || t.foto_url || null;
+
+        const merged: OrderTaskItem = {
+          ...t,
+          ...changes,
+          fotos: nextFotos,
+          foto_url: nextFotoUrl,
+        };
+
+        ordersService.updateTask(taskId, {
+          ordenId: prevOrder.OrdenId,
+          codigo_tarea: merged.codigo_tarea,
+          titulo: merged.titulo,
+          valor_ingresado: merged.valor_ingresado,
+          foto_url: merged.foto_url,
+          fotos: merged.fotos,
+          completado: merged.completado,
+          lat: coords?.lat,
+          lng: coords?.lng,
+        });
+
+        return merged;
       });
-      return merged;
+
+      try {
+        sessionStorage.setItem(`q2_tasks_${prevOrder.OrdenId}`, JSON.stringify(updatedTasks));
+      } catch {
+        // Ignorar límite de cuota de sessionStorage; la BD ya tiene el respaldo
+      }
+
+      return { ...prevOrder, tasks: updatedTasks };
     });
-    setOrder({ ...order, tasks: updatedTasks });
-    sessionStorage.setItem(`q2_tasks_${order.OrdenId}`, JSON.stringify(updatedTasks));
   };
 
   const requiredTasks = order.tasks.filter((t) => !t.optional && !t.conditionalOnEncargado);

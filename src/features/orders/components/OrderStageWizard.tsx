@@ -18,6 +18,41 @@ const STAGES: { key: OrderStageKey; label: string }[] = [
   { key: 'EQUIPOS', label: '4. Equipos' },
 ];
 
+// Comprime la imagen a máx 1280px JPEG (evita que pese 8MB y acelera el OCR y guardado)
+const compressImageFile = (file: File): Promise<string> =>
+  new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        const maxDim = 1280;
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', 0.82));
+        } else {
+          resolve(ev.target?.result as string);
+        }
+      };
+      img.onerror = () => resolve(ev.target?.result as string);
+      img.src = ev.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  });
+
 export const OrderStageWizard = ({ tasks, disabled, defaultTitularDoc, onUpdateTask }: Props) => {
   const [activeStage, setActiveStage] = useState<OrderStageKey>('CLIENTE');
   const [attendant, setAttendant] = useState<'TITULAR' | 'ENCARGADO'>('TITULAR');
@@ -60,6 +95,8 @@ export const OrderStageWizard = ({ tasks, disabled, defaultTitularDoc, onUpdateT
       const detectedText = await extractSmartOcr(imageBase64, task.scanMode);
       if (detectedText) {
         onUpdateTask(task.id, {
+          fotos: currentPhotos,
+          foto_url: currentPhotos[0] || null,
           valor_ingresado: detectedText,
           completado: currentPhotos.length > 0,
         });
@@ -73,16 +110,7 @@ export const OrderStageWizard = ({ tasks, disabled, defaultTitularDoc, onUpdateT
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
 
-    Promise.all(
-      files.map(
-        (file) =>
-          new Promise<string>((resolve) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result as string);
-            reader.readAsDataURL(file);
-          })
-      )
-    ).then(async (newBase64List) => {
+    Promise.all(files.map(compressImageFile)).then(async (newBase64List) => {
       const currentPhotos = getPhotos(task);
       const updatedPhotos = [...currentPhotos, ...newBase64List];
       const val = task.valor_ingresado || (task.codigo_tarea === 'DOC_TITULAR' ? defaultTitularDoc : '');
@@ -118,7 +146,12 @@ export const OrderStageWizard = ({ tasks, disabled, defaultTitularDoc, onUpdateT
   const handleText = (task: OrderTaskItem, valor_ingresado: string) => {
     const photos = getPhotos(task);
     const completado = valor_ingresado.trim().length > 0 && photos.length > 0;
-    onUpdateTask(task.id, { valor_ingresado, completado });
+    onUpdateTask(task.id, {
+      fotos: photos,
+      foto_url: photos[0] || null,
+      valor_ingresado,
+      completado,
+    });
   };
 
   const visibleTasks = tasks.filter((t) => {
@@ -350,6 +383,8 @@ export const OrderStageWizard = ({ tasks, disabled, defaultTitularDoc, onUpdateT
           onDetected={(code) => {
             const photos = getPhotos(barcodeTask);
             onUpdateTask(barcodeTask.id, {
+              fotos: photos,
+              foto_url: photos[0] || null,
               valor_ingresado: code,
               completado: photos.length > 0,
             });
